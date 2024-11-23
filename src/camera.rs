@@ -14,7 +14,6 @@ impl Camera {
         let camera = self
             .perspective
             .unproject_point(&Point3::new(clip.x, -clip.y, 0.0));
-
         let origin = self.transform.transform_point(&Point3::origin());
         let direction = (self.transform.transform_point(&camera) - origin).normalize();
 
@@ -33,9 +32,6 @@ impl Camera {
     }
 
     pub fn from_deserialized(camera: &crate::serialize::Camera) -> Self {
-        let transposed = camera.transform.into_inner().transpose();
-        let transform = Transform3::from_matrix_unchecked(transposed);
-
         Self {
             perspective: Perspective3::new(
                 camera.aspect_ratio,
@@ -43,7 +39,7 @@ impl Camera {
                 camera.znear,
                 camera.zfar,
             ),
-            transform,
+            transform: camera.transform,
         }
     }
 }

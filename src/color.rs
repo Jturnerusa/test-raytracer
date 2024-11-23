@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     io::Write,
-    ops::{Div, Mul},
+    ops::{Add, Div, Mul},
 };
 
 use nalgebra::Vector4;
@@ -39,6 +39,14 @@ impl From<Color> for Vector4<f64> {
     }
 }
 
+impl Add for Color {
+    type Output = Color;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
 impl Mul for Color {
     type Output = Color;
 
@@ -54,11 +62,26 @@ impl Mul<f64> for Color {
     }
 }
 
+impl Mul<Color> for f64 {
+    type Output = Color;
+
+    fn mul(self, rhs: Color) -> Self::Output {
+        rhs * self
+    }
+}
+
 impl Div for Color {
     type Output = Color;
 
     fn div(self, rhs: Self) -> Self::Output {
         Self(self.0.component_div(&rhs.0))
+    }
+}
+
+impl Div<f64> for Color {
+    type Output = Color;
+    fn div(self, rhs: f64) -> Self::Output {
+        Self(self.0 / rhs)
     }
 }
 

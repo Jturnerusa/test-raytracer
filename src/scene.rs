@@ -22,9 +22,7 @@ impl Scene {
                     material: Material::from_deserialized(
                         scene.materials[object.material.as_str()],
                     ),
-                    transform: Transform3::from_matrix_unchecked(
-                        object.transform.into_inner().transpose(),
-                    ),
+                    transform: object.transform,
                 })
                 .collect::<Vec<_>>(),
             lights: scene
@@ -40,6 +38,10 @@ impl Scene {
     pub fn rec(&self, rec: &mut rerun::RecordingStream) {
         for light in &self.lights {
             light.rec(rec);
+        }
+
+        for mesh in &self.meshes {
+            mesh.rec(rec);
         }
     }
 }

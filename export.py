@@ -1,7 +1,25 @@
-import bpy, itertools, json, bmesh, sys, math
-from dataclasses import dataclass
+import bpy
+import itertools
+import json
+import bmesh
+import sys
+import math
 from more_itertools import flatten
 from bpy_extras import io_utils
+from mathutils import Matrix
+
+
+def flatten_matrix(m):
+    return list(flatten(map(lambda x: list(x), m)))
+
+
+def yup(m):
+    return (
+        m
+        @ io_utils.axis_conversion(
+            from_forward="Y", from_up="Z", to_forward="Z", to_up="Y"
+        ).to_4x4()
+    )
 
 
 def export_light(light, view):
@@ -10,7 +28,7 @@ def export_light(light, view):
             return {
                 "Area": {
                     "size": light.size,
-                    "transform": list(flatten(map(lambda x: list(x), list(view)))),
+                    "transform": flatten_matrix(yup(view).transposed()),
                     "power": light.energy,
                     "color": [light.color[0], light.color[1], light.color[2], 0],
                 }
@@ -38,11 +56,11 @@ def export_material(material):
 
 def export_camera(camera, view):
     return {
-        "fov": math.radians(90),
+        "fov": math.radians(30),
         "aspect_ratio": 1.77,
         "znear": camera.clip_start,
         "zfar": camera.clip_end,
-        "transform": list(flatten(map(lambda x: list(x), list(view)))),
+        "transform": flatten_matrix(view.transposed()),
     }
 
 
@@ -63,7 +81,7 @@ def export_mesh(mesh):
 
 def export_object(object):
     mesh = object.data.name
-    transform = list(flatten(map(lambda x: list(x), list(object.matrix_world))))
+    transform = flatten_matrix(yup(object.matrix_world).transposed())
     material = object.material_slots[0].name
 
     return {"mesh": mesh, "transform": transform, "material": material}

@@ -9,6 +9,7 @@ use ray::Ray;
 use scene::Scene;
 use std::error::Error;
 use std::io::{self, Read};
+use std::iter;
 use std::{fs::File, path::PathBuf};
 
 mod camera;
@@ -29,6 +30,8 @@ struct Args {
     aspect_ratio: f64,
     #[arg(long)]
     scene: PathBuf,
+    #[arg(long)]
+    samples: usize,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -44,14 +47,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut pixels = vec![crate::color::BLACK; args.width * height];
 
-    draw(&scene, pixels.as_mut_slice(), args.width, height);
+    draw(
+        &scene,
+        pixels.as_mut_slice(),
+        args.width,
+        height,
+        args.samples,
+    );
 
     color::write_ppm(args.width, height, pixels.as_slice(), &mut io::stdout())?;
 
     Ok(())
 }
 
-fn draw(scene: &Scene, pixels: &mut [Color], width: usize, height: usize) {
+fn draw(scene: &Scene, pixels: &mut [Color], width: usize, height: usize, samples: usize) {
     let mut rec = rerun::RecordingStreamBuilder::new("camera")
         .save("/home/notroot/tmp/camera.rrd")
         .unwrap();
@@ -59,19 +68,29 @@ fn draw(scene: &Scene, pixels: &mut [Color], width: usize, height: usize) {
     scene.rec(&mut rec);
 
     for y in 0..height {
+        eprintln!("processing row {y}");
         for x in 0..width {
-            let clip = Point2::new(
-                ((x as f64 / width as f64) * 2.0) - 1.0,
-                ((y as f64 / height as f64) * 2.0) - 1.0,
-            );
-            let ray = scene.camera.cast_ray(clip, &mut rec);
+            let color = iter::repeat_with(|| {
+                let x = OsRng.gen_range(x as f64..x as f64 + 1.0);
+                let y = OsRng.gen_range(y as f64..y as f64 + 1.0);
+                let clip = Point2::new(
+                    ((x / width as f64) * 2.0) - 1.0,
+                    ((y / height as f64) * 2.0) - 1.0,
+                );
+                let ray = scene.camera.cast_ray(clip, &mut rec);
+                ray_color(scene, ray, &mut rec)
+            })
+            .take(samples)
+            .reduce(|acc, e| acc + e)
+            .unwrap()
+                / samples as f64;
 
-            pixels[x + (y * width)] = ray_color(scene, ray);
+            pixels[x + (y * width)] = color;
         }
     }
 }
 
-fn ray_color(scene: &Scene, ray: Ray) -> Color {
+fn ray_color(scene: &Scene, ray: Ray, rec: &mut rerun::RecordingStream) -> Color {
     match closest_hit(scene, ray) {
         Some(hit) => match hit {
             Record::Light { color, .. } => color,
@@ -80,11 +99,45 @@ fn ray_color(scene: &Scene, ray: Ray) -> Color {
                 normal,
                 t,
             } => match material {
-                Material::Diffuse { color, adsorption } => color,
+                Material::Diffuse { color, adsorption } => {
+                    rec.log(
+                        "normals",
+                        &rerun::Arrows3D::from_vectors([[
+                            normal.x as f32,
+                            normal.y as f32,
+                            normal.z as f32,
+                        ]]),
+                    )
+                    .unwrap();
+                    let diffused = Ray {
+                        origin: ray.at(t),
+                        direction: normal + random_unit_vec(),
+                    };
+                    rec.log(
+                        "diffused",
+                        &rerun::Arrows3D::from_vectors([[
+                            diffused.direction.x as f32,
+                            diffused.direction.y as f32,
+                            diffused.direction.z as f32,
+                        ]])
+                        .with_origins([[
+                            diffused.origin.x as f32,
+                            diffused.origin.y as f32,
+                            diffused.origin.z as f32,
+                        ]]),
+                    )
+                    .unwrap();
+                    ray_color(scene, diffused, rec) * color * adsorption
+                }
                 _ => color::BLACK,
             },
         },
-        None => scene.background,
+        None => {
+            let ud = ray.direction.normalize();
+            let blue = Color::new(0.5, 0.7, 1.0, 0.0);
+            let a = 0.5 * (ud.y + 1.0);
+            (1.0 - a) * color::WHITE + a * blue
+        }
     }
 }
 
